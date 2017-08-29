@@ -3,7 +3,7 @@
 module Offer (DHCPOffer (..), parseDhcpOffer, dnsFromDhcpOffer)
 where
 
-import Data.Attoparsec.ByteString (anyWord8)
+import Data.Attoparsec.ByteString ((<?>), anyWord8)
 import qualified Data.Attoparsec.ByteString as AB (parseOnly, string)
 import Data.Attoparsec.Combinator (count)
 import Data.ByteString (ByteString)
@@ -24,35 +24,43 @@ data DHCPOffer = DHCPOffer {
 parseDhcpOffer :: [Word8] -> ByteString -> Either String DHCPOffer
 parseDhcpOffer xid response = AB.parseOnly parser response
   where
-    parser = do
-      AB.string $ BS.pack [0x02]
-      AB.string $ BS.pack [0x01]
-      AB.string $ BS.pack [0x06]
-      AB.string $ BS.pack [0x00]
-      AB.string $ BS.pack xid
-      AB.string $ BS.pack [0x00, 0x00]
-      AB.string $ BS.pack [0x80, 0x00]
-      AB.string $ BS.pack [0x00, 0x00, 0x00, 0x00]
-      yiaddr <- ip
-      siaddr <- ip
-      AB.string $ BS.pack [0x00, 0x00, 0x00, 0x00]
-      sequence (replicate 16 anyWord8) -- ignoring client's physical address
-      AB.string $ BS.pack (replicate 192 0x00)
-      AB.string $ BS.pack [0x63, 0x82, 0x53, 0x63]
+    parser = (<?> "DHCPOffer") $ do
+      AB.string (BS.pack [0x02]) <?> "OP"
+      AB.string (BS.pack [0x01]) <?> "HTYPE"
+      AB.string (BS.pack [0x06]) <?> "HLEN"
+      AB.string (BS.pack [0x00]) <?> "HOPS"
+      AB.string (BS.pack xid) <?> "XID"
+      AB.string (BS.pack [0x00, 0x00]) <?> "SECS"
+      AB.string (BS.pack [0x80, 0x00]) <?> "FLAGS"
+      AB.string (BS.pack [0x00, 0x00, 0x00, 0x00]) <?> "Client IP address"
+      yiaddr <- ip <?> "Your IP address"
+      siaddr <- ip <?> "Server IP address"
+      AB.string (BS.pack [0x00, 0x00, 0x00, 0x00]) <?> "Gateway IP address"
+
+      -- Ignoring client's physical address.
+      sequence (replicate 16 anyWord8) <?> "Client hardware address"
+
+      -- This field is documented as 192 bytes of zeros.
+      -- However testing some servers showed that it is not
+      -- always the case.
+      sequence (replicate 192 anyWord8) <?> "BOOTP legacy"
+
+      AB.string (BS.pack [0x63, 0x82, 0x53, 0x63]) <?> "Magic cookie"
       opts <- scanDhcpOptions M.empty
       return $ DHCPOffer yiaddr siaddr opts
       where
-        ip = IP <$> anyWord8 <*> anyWord8 <*> anyWord8 <*> anyWord8
+        ip = (<?> "IP address") $
+          IP <$> anyWord8 <*> anyWord8 <*> anyWord8 <*> anyWord8
         dhcpOption = do
           len <- anyWord8
           count (fromIntegral len) anyWord8
-        scanDhcpOptions options = do
+        scanDhcpOptions options = (<?> "DHCP Options") $ do
           tag <- anyWord8
           case tag of
             0x00 -> scanDhcpOptions options -- padding - carry on
             0xff -> return options          -- endmark - finish
             _ -> do
-              opt <- dhcpOption
+              opt <- dhcpOption <?> "Option " ++ show tag
               scanDhcpOptions (M.insert tag opt options)
 
 dnsFromDhcpOffer :: DHCPOffer -> Maybe [IP]

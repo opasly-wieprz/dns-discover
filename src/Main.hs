@@ -28,9 +28,9 @@ showError = \case
   FetchError (SendingError e) -> (2, "Sending error: " ++ show e)
   FetchError TimeoutError -> (3, "Timeout: giving up.")
   ParsingOfferError msg -> (4, "Parsing response failed: " ++ msg)
-  ResolvConfError (ParsingError msg) -> (4, "Parsing resolv.conf failed: " ++ msg)
-  ResolvConfError (ReadingError exc) -> (5, "Read error: " ++ show exc)
-  ResolvConfError (WritingError exc) -> (5, "Write error: " ++ show exc)
+  ResolvConfError (ParsingError msg) -> (5, "Parsing resolv.conf failed: " ++ msg)
+  ResolvConfError (ReadingError exc) -> (6, "Read error: " ++ show exc)
+  ResolvConfError (WritingError exc) -> (6, "Write error: " ++ show exc)
 
 getXid :: IO [Word8]
 getXid =
